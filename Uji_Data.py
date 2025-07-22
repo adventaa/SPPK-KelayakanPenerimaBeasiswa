@@ -1,4 +1,5 @@
 import tkinter as tk
+import tkinter.font as tkFont
 import os
 import numpy as np
 import pandas as pd
@@ -11,6 +12,10 @@ from sklearn.metrics import (confusion_matrix, accuracy_score, classification_re
 
 class UjiDataTab:
     def __init__(self, notebook, modeling_tab):
+
+        # Buat font bold
+        bold_font = tkFont.Font(weight="bold", size=10)
+
         self.frame = ttk.Frame(notebook)
         self.modeling_tab = modeling_tab  # Akses data dari halaman modeling
 
@@ -94,6 +99,18 @@ class UjiDataTab:
         self.btn_klasifikasi = ttk.Button(self.form_frame, text="Input File Excel Beasiswa SDSF", command=self.klasifikasi_file)
         self.btn_klasifikasi.grid(row=40, column=50, padx=135, pady=2, sticky="w")
         
+        langkah_teks = (
+            "Langkah-langkah :\n"
+            "1. Setelah membuat model, masukkan data pada form di atas untuk uji data tunggal\n"
+            "2. Klik tombol 'Proses' untuk melihat hasil keputusan data tunggal\n"
+            "3. Klik tombol 'Simpan Data Tunggal' jika ingin menyimpan hasil keputusan data tunggal\n"
+            "4. Klik tombol 'Isi Ulang Data' untuk mengisi kembali data pada form\n"
+            "5. Jika ingin uji data kelompok, klik 'Input File Excel Beasiswa SDSF'"
+        )
+        label_langkah = ttk.Label(self.form_frame, text=langkah_teks, justify="left")
+        label_langkah.grid(row=75, column=1, sticky="w", padx=5, pady=10)
+
+        
     # Fungsi Isi Ulang Data
     def isi_ulang_data(self):
         # Hapus isi data di setiap kolom
@@ -151,13 +168,19 @@ class UjiDataTab:
     # Fungsi Proses Data
     def proses_data(self):
         try:
-            # Muat model dari file yang telah disimpan dari halaman modeling
-            model_path = "model_beasiswa.pkl"
-            model = joblib.load(model_path)
+            # Muat model dari hasil model yang telah disimpan dari halaman modeling
+            # model_path = "model_beasiswa.pkl"
+            # model = joblib.load(model_path)
 
-            # Muat preprocessing dari halaman modeling
-            scaler_path = "scaler.pkl"
-            scaler = joblib.load(scaler_path) 
+            # # Muat preprocessing dari halaman modeling
+            # scaler_path = "scaler.pkl"
+            # scaler = joblib.load(scaler_path) 
+
+            model_data = joblib.load("model_beasiswa.pkl")
+            model = model_data["model"]
+            # selector = model_data["selector"]
+            scaler = model_data["scaler"]
+            selected_features = model_data["selected_features"]
 
             # Ambil data dari input form
             data_input = [
@@ -192,14 +215,20 @@ class UjiDataTab:
             # Preprocessing 
             # data_input_array = scaler.transform(data_input_array)
 
-            # Mengubah data input menjadi data frame sesuai dengan kolom di feature_names
-            data_input_df = pd.DataFrame([data_input], columns=feature_names)
 
-            # Menerapkan scaler ke data_input_df
-            data_input_scaled = scaler.transform(data_input_df)
+            # Mengubah data input menjadi data frame sesuai dengan kolom di feature_names
+            data_input = pd.DataFrame([data_input], columns=feature_names)
+
+            # Menerapkan scaler ke data_input
+            data_scaled_array = scaler.transform(data_input)
+
+            data_scaled_data = pd.DataFrame(data_scaled_array,columns=feature_names)
+
+            # Seleksi fitur menggunakan transform
+            data_transformed = data_scaled_data[selected_features].values
             
             # Mendapatkan hasil prediksi dari model yang sudah dibuat dan mengambil nilai pertama dari array hasil prediksi
-            hasil_prediksi = model.predict(data_input_scaled)[0]
+            hasil_prediksi = model.predict(data_transformed)[0]
 
             # Menentukan hasil berdasarkan prediksi
             hasil_keputusan = "Layak Menerima Beasiswa" if hasil_prediksi == 1 else "Tidak Layak Menerima Beasiswa"
@@ -224,16 +253,15 @@ class UjiDataTab:
         try:
             # Memilih dataset dari file lokal
             file_path = filedialog.askopenfilename(filetypes=[("Excel Files", "*.xlsx;*.xls")])
-            
             if not file_path:
                 return  # Jika pengguna batal memilih file, keluar dari fungsi
             
             # Muat model dan scaler yang telah disimpan
-            model_path = "model_beasiswa.pkl"
-            scaler_path = "scaler.pkl"
-
-            model = joblib.load(model_path)
-            scaler = joblib.load(scaler_path)
+            model_data = joblib.load("model_beasiswa.pkl")
+            model = model_data["model"]
+            # selector = model_data["selector"]
+            scaler = model_data["scaler"]
+            selected_features = model_data["selected_features"]
 
             print("Model dan scaler berhasil dimuat.")
 
@@ -257,10 +285,16 @@ class UjiDataTab:
             df_input = df[expected_columns]
 
             # Preprocessing (scaling)
-            df_scaled = scaler.transform(df_input)
+            df_scaled_array = scaler.transform(df_input)
+
+            # Konversi kembali ke DataFrame untuk bisa pakai nama kolom
+            df_scaled_df = pd.DataFrame(df_scaled_array, columns=expected_columns)
+
+            # Ambil hanya kolom yang dipilih
+            df_transformed = df_scaled_df[selected_features].values  # hasil akhirnya tetap array untuk predict
 
             # Prediksi menggunakan model
-            predictions = model.predict(df_scaled)
+            predictions = model.predict(df_transformed)
 
             # Probabilitas hasil prediksi untuk per baris
             # prediction_probs = model.predict_proba(df_scaled)
