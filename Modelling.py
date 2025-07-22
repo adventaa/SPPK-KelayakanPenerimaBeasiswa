@@ -9,6 +9,7 @@ from sklearn.feature_selection import mutual_info_classif
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import (confusion_matrix, accuracy_score, classification_report)
 from sklearn.tree import export_text
+from sklearn.feature_selection import SelectFromModel
 
 class ModelingTab:
     def __init__(self, notebook):
@@ -160,7 +161,7 @@ class ModelingTab:
             data_beasiswa[kolom_normalisasi] = scaler.fit_transform(data_beasiswa[kolom_normalisasi])
 
             # Jumlah round untuk menampilkan jumlah angka dibelakang koma
-            data_beasiswa = data_beasiswa.round(6)
+            # data_beasiswa = data_beasiswa.round(6)
 
             # desimal_per_kolom = {
             #     'Jumlah Semester Tempuh': 2,
@@ -195,74 +196,69 @@ class ModelingTab:
     # Fungsi untuk proses model menggunakan data hasil preprocessing + jumlah k fold + jumlah tree
     def process_model(self):
         try:
+            # Validasi data
             if self.processed_data is None:
                 print("Harap jalankan preprocessing terlebih dahulu!")
                 return
             
-            # Menyimpan nilai K-Fold dan nilai tree dari hasil inputan
-            k_fold = int(self.kfold_entry.get())
-            n_tree = int(self.tree_entry.get())
-            print(f"🔹 Memulai Model Training dengan K-Fold={k_fold}, Trees={n_tree}...")
+            # Ambil nilai dari entry GUI
+            num_folds = int(self.kfold_entry.get())
+            num_estimators = int(self.tree_entry.get())
+            print(f"🔹 Memulai Model Training dengan K-Fold={num_folds}, Trees={num_estimators}...")
 
-            # Pembangian data
-            X = self.processed_data.drop('Status', axis=1)
-            Y = self.processed_data['Status']
+            # Ambil data dari processed_data
+            data_beasiswa = self.processed_data
+            X = data_beasiswa.drop('Status', axis=1)
+            Y = data_beasiswa['Status']
 
             # Split data (80% Train, 20% Test)
             X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
 
-            
-            # Feature selection (information gain)
-            # ig = mutual_info_classif(X_train, Y_train, discrete_features='auto', n_neighbors=3, copy=True, random_state=42)
-            # ig_data = pd.DataFrame(data=ig, index=X_train.columns, columns=['Information Gain'])
-            # ig_data = ig_data.sort_values(by='Information Gain', ascending=False)
-            # print("\nInformation Gain per Fitur:\n", ig_data)
-
-            # Cross-validation
-            kfold = KFold(n_splits=k_fold, shuffle=True, random_state=42)
+            # K-Fold cross-validation
+            kfold = KFold(n_splits=num_folds, shuffle=True, random_state=42)
             for train_index, test_index in kfold.split(X):
                 X_train, X_test = X.iloc[train_index], X.iloc[test_index]
                 Y_train, Y_test = Y.iloc[train_index], Y.iloc[test_index]
 
-            # Modeling random forest
-            model = RandomForestClassifier(n_estimators=n_tree, random_state=42)
-            model.fit(X_train, Y_train)
-            predictions = model.predict(X_test)
-            self.model = model  # Menyimpan model dalam atribut self
+            # Feature Selection
+            selector = SelectFromModel(RandomForestClassifier(n_estimators=num_estimators, random_state=42, criterion='entropy'))
+            selector.fit(X_train, Y_train)
 
-            # Menghitung nilai akurasi
+            # Transformasi fitur
+            X_train_selected = selector.transform(X_train)
+            X_test_selected = selector.transform(X_test)
+            selected_features = X.columns[selector.get_support()]
+            self.selected_features = list(selected_features)  # Simpan untuk disimpan di model
+            print("Fitur Terpilih:", self.selected_features)
+
+            # Train model akhir dengan fitur yang sudah terpilih
+            model = RandomForestClassifier(n_estimators=num_estimators, random_state=42, criterion='entropy')
+            model.fit(X_train_selected, Y_train)
+            predictions = model.predict(X_test_selected)
+
+            # Simpan model ke dalam objek self
+            self.model = model
+            self.selector = selector
+            selected_features = X_train.columns[selector.get_support()].tolist()
+
+            # Evaluasi model
+            from sklearn.metrics import (
+                accuracy_score, confusion_matrix, classification_report
+            )
             accuracy = accuracy_score(Y_test, predictions)
-            print(f"\nAkurasi Model:", accuracy) 
+            print(f"\nAccuracy: {accuracy:.4f}")
+            print("\nConfusion Matrix:\n", confusion_matrix(Y_test, predictions))
+            print("\nClassification Report:\n", classification_report(Y_test, predictions))
 
-            # Menampilkan confusion matrix di terminal
-            # conf_matrix = confusion_matrix(Y_test, predictions)
-            # print("\nConfusion Matrix:")
-            # print(conf_matrix)
-
-            # Menampilkan classification report di terminal
-            # class_report = classification_report(Y_test, predictions)
-            # print("\nClassification Report:")
-            # print(class_report)
-
-            # Menampilkan hasil akurasi di GUI
+            # Tampilkan akurasi di GUI
             self.accuracy_display.config(state="normal")
             self.accuracy_display.delete(1.0, tk.END)
-            self.accuracy_display.insert(tk.END, f"{accuracy:.4f}") # pembulatan 4 angka dibelakang koma
+            self.accuracy_display.insert(tk.END, f"{accuracy:.4f}")
             self.accuracy_display.config(state="disabled")
 
-            # Gabungkan X_test dan Y_test dalam satu dataframe
-            # data_test = X_test.copy()
-            # data_test['Label'] = Y_test.values  # Tambahkan kolom Y_test
-
-            # Simpan ke file Excel
-            
-
-            # print("✅ Data Testing (20%) berhasil disimpan ke 'data_testing.xlsx'")
-
         except Exception as e:
-            # print("Error: Masukkan angka yang valid untuk K-Fold dan Tree!")
-            messagebox.showerror("Error", f"Masukkan angka yang valid untuk K-Fold dan Tree!")
-            print(f"Error: Masukkan angka yang valid untuk K-Fold dan Tree!")
+            messagebox.showerror("Error", "Masukkan angka yang valid untuk K-Fold dan Tree!")
+            print(f"Error: {e}")
 
 
     # Fungsi untuk menyimpan hasil model yang sudah dibuat
@@ -275,16 +271,19 @@ class ModelingTab:
                 return
             
             # Menyimpan model
-            model_path = "model_beasiswa.pkl"  
-            joblib.dump(self.model, model_path) 
+            
+            simpan_model = {
+                "model" : self.model,
+                # "selector" : self.selector,
+                "scaler" : joblib.load("scaler.pkl"),
+                "selected_features" : self.selected_features
+            }
 
-            # menyimpan scaler
-            # joblib.dump(scaler, "scaler.pkl")
+            joblib.dump(simpan_model, "model_beasiswa.pkl")
             
             # Menampilkan pesan berhasil
-            messagebox.showinfo("Sukses", f"Model dan preprocessing berhasil disimpan!\nModel: {model_path}")
-            print(f"Model disimpan di: {model_path}")
-            # print(f"Pipeline preprocessing disimpan di: {scaler}")
+            messagebox.showinfo("Sukses", f"Model berhasil disimpan!")
+            print(f"Model disimpan di: {simpan_model}")
             
 
         except Exception as e:
