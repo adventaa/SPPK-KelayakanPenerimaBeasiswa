@@ -30,7 +30,7 @@
   - Melakukan pengujian berupa data tunggal/individu dan berupa data kelompok/klasifikasi file
 - Usability testing
 ---
-# ⚙️ Percobaan Pengujian
+# 💡 Percobaan Pengujian
 - n_estimators (jumlah pohon): 10, 30, 50, 70, 100
 - K-Fold: 3, 5, 9, 10, 11
 - Feature selection: metode embedded
